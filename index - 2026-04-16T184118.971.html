@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MedBeauty 価格管理システム</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=DM+Mono:wght@300;400;500&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#0a0c10; --surface:#11141a; --surface2:#181c24; --border:#1e2430;
+  --accent:#4fc3a1; --accent2:#f0a868; --danger:#e05c5c; --warn:#f0c040;
+  --text:#e8eaf0; --text2:#8890a0; --text3:#4a5060;
+  --krw:#5b8dee; --gbp:#a855f7; --usd:#22c55e; --eur:#f59e0b;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:14px;min-height:100vh;}
+
+/* Header */
+header{display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:100;}
+.logo{font-family:'Playfair Display',serif;font-size:20px;color:var(--accent);}
+.logo span{color:var(--text2);font-size:13px;font-family:'Noto Sans JP',sans-serif;margin-left:10px;}
+.header-right{display:flex;align-items:center;gap:16px;}
+.last-updated{color:var(--text2);font-family:'DM Mono',monospace;font-size:12px;}
+.btn-refresh{background:var(--accent);color:#000;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;font-family:'Noto Sans JP',sans-serif;transition:opacity 0.2s;}
+.btn-refresh:hover{opacity:0.85;}
+.btn-refresh:disabled{opacity:0.4;pointer-events:none;}
+
+/* Alert bar */
+#alert-bar{display:none;background:#1a1010;border-bottom:1px solid var(--danger);padding:8px 28px;flex-wrap:wrap;gap:8px;align-items:center;}
+#alert-bar.show{display:flex;}
+.alert-chip{display:flex;align-items:center;gap:7px;padding:5px 12px;border-radius:6px;font-size:12px;background:rgba(224,92,92,0.12);border:1px solid var(--danger);}
+.alert-chip.warn{background:rgba(240,192,64,0.10);border-color:var(--warn);}
+.alert-dot{width:7px;height:7px;border-radius:50%;background:var(--danger);animation:blink 1.2s infinite;}
+.alert-chip.warn .alert-dot{background:var(--warn);}
+.chip-label{color:var(--danger);font-weight:500;}
+.alert-chip.warn .chip-label{color:var(--warn);}
+.chip-msg{color:var(--text2);}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+
+/* Layout */
+.layout{display:grid;grid-template-columns:260px 1fr;min-height:calc(100vh - 57px);}
+aside{background:var(--surface);border-right:1px solid var(--border);padding:20px 16px;display:flex;flex-direction:column;gap:20px;}
+main{padding:24px 28px;display:flex;flex-direction:column;gap:20px;min-width:0;}
+
+/* Section label */
+.sec-label{font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text3);margin-bottom:10px;font-weight:500;}
+
+/* FX Cards */
+.fx-card{background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:12px 14px;margin-bottom:8px;transition:border-color 0.2s;}
+.fx-card.is-alert{border-color:var(--danger);}
+.fx-card.is-warn{border-color:var(--warn);}
+.fx-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.fx-code{font-family:'DM Mono',monospace;font-weight:500;font-size:13px;}
+.fx-code.KRW{color:var(--krw)}.fx-code.GBP{color:var(--gbp)}.fx-code.USD{color:var(--usd)}.fx-code.EUR{color:var(--eur)}
+.fx-badge{font-size:11px;padding:2px 6px;border-radius:4px;font-family:'DM Mono',monospace;}
+.fx-badge.up{background:rgba(224,92,92,0.15);color:var(--danger)}
+.fx-badge.dn{background:rgba(79,195,161,0.15);color:var(--accent)}
+.fx-badge.fl{background:rgba(138,144,160,0.12);color:var(--text2)}
+.fx-rate{font-size:20px;font-family:'DM Mono',monospace;margin-bottom:8px;}
+.fx-inputs{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.fx-inp-label{font-size:10px;color:var(--text3);display:block;margin-bottom:2px;}
+.fx-inp{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:4px 7px;color:var(--text);font-family:'DM Mono',monospace;font-size:12px;outline:none;}
+.fx-inp:focus{border-color:var(--accent);}
+.fx-bar{height:3px;border-radius:2px;background:var(--border);margin-top:8px;overflow:hidden;}
+.fx-fill{height:100%;border-radius:2px;transition:width 0.5s,background 0.3s;}
+
+/* Summary */
+.summary-row{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;}
+.sum-card{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:16px 18px;}
+.sum-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;}
+.sum-value{font-size:22px;font-family:'DM Mono',monospace;}
+.sum-sub{font-size:11px;color:var(--text2);margin-top:3px;}
+
+/* Panel */
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+.panel-head{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);}
+.panel-title{font-size:15px;font-weight:500;}
+.panel-actions{display:flex;gap:8px;}
+
+/* Cat tabs */
+.cat-tabs{display:flex;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;}
+.cat-tabs::-webkit-scrollbar{display:none;}
+.cat-tab{padding:9px 16px;font-size:13px;cursor:pointer;white-space:nowrap;border:none;border-bottom:2px solid transparent;color:var(--text2);background:none;font-family:'Noto Sans JP',sans-serif;transition:color 0.15s,border-color 0.15s;flex-shrink:0;display:flex;align-items:center;gap:5px;}
+.cat-tab:hover{color:var(--text);}
+.cat-tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:500;}
+.cat-cnt{font-size:10px;font-family:'DM Mono',monospace;background:var(--surface2);border-radius:8px;padding:1px 5px;color:var(--text3);}
+.cat-tab.active .cat-cnt{background:rgba(79,195,161,0.15);color:var(--accent);}
+
+/* Table */
+table{width:100%;border-collapse:collapse;}
+thead tr{background:var(--surface2);}
+th{text-align:left;padding:10px 14px;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text3);font-weight:500;white-space:nowrap;}
+td{padding:10px 14px;border-top:1px solid var(--border);vertical-align:middle;}
+tr:hover td{background:rgba(255,255,255,0.012);}
+.td-inp{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:4px 8px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;outline:none;}
+.td-inp:focus{border-color:var(--accent);}
+.td-sel{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:4px 6px;color:var(--text);font-size:12px;cursor:pointer;outline:none;}
+.td-name{background:transparent;border:none;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:14px;outline:none;width:100%;min-width:140px;}
+.td-name:focus{border-bottom:1px solid var(--accent);}
+.price-rec{font-family:'DM Mono',monospace;font-weight:700;font-size:15px;color:var(--accent2);}
+.price-cost{font-family:'DM Mono',monospace;font-weight:500;color:var(--accent);}
+.mbadge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-family:'DM Mono',monospace;}
+.mbadge.good{background:rgba(79,195,161,0.15);color:var(--accent)}
+.mbadge.mid{background:rgba(240,168,104,0.15);color:var(--accent2)}
+.mbadge.low{background:rgba(224,92,92,0.15);color:var(--danger)}
+.diff{font-size:11px;font-family:'DM Mono',monospace;padding:2px 6px;border-radius:4px;white-space:nowrap;display:inline-block;margin-top:3px;}
+.diff.over{background:rgba(79,195,161,0.12);color:var(--accent)}
+.diff.under{background:rgba(224,92,92,0.12);color:var(--danger)}
+.diff.same{background:rgba(138,144,160,0.10);color:var(--text2)}
+.btn-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;padding:2px 6px;transition:color 0.15s;}
+.btn-del:hover{color:var(--danger);}
+.empty-row td{text-align:center;color:var(--text3);padding:40px;}
+.cur-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;}
+.cur-dot.KRW{background:var(--krw)}.cur-dot.GBP{background:var(--gbp)}.cur-dot.USD{background:var(--usd)}.cur-dot.EUR{background:var(--eur)}
+
+/* Buttons */
+.btn-outline{background:transparent;border:1px solid var(--accent);color:var(--accent);padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-family:'Noto Sans JP',sans-serif;transition:background 0.15s;}
+.btn-outline:hover{background:rgba(79,195,161,0.1);}
+.btn-outline.o{border-color:var(--accent2);color:var(--accent2);}
+.btn-outline.o:hover{background:rgba(240,168,104,0.1);}
+
+/* Modal */
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.72);z-index:200;align-items:center;justify-content:center;}
+.overlay.show{display:flex;}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;width:460px;max-width:95vw;}
+.modal h3{font-size:16px;font-weight:500;margin-bottom:18px;}
+.fg{margin-bottom:14px;}
+.fg label{display:block;font-size:12px;color:var(--text2);margin-bottom:5px;}
+.fg input,.fg select{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:9px 12px;color:var(--text);font-family:'Noto Sans JP',sans-serif;font-size:14px;outline:none;}
+.fg input:focus,.fg select:focus{border-color:var(--accent);}
+.mfooter{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;}
+.btn-c{background:none;border:1px solid var(--border);color:var(--text2);padding:8px 18px;border-radius:7px;cursor:pointer;font-size:13px;font-family:'Noto Sans JP',sans-serif;}
+.btn-s{background:var(--accent);color:#000;border:none;padding:8px 22px;border-radius:7px;cursor:pointer;font-size:13px;font-weight:500;font-family:'Noto Sans JP',sans-serif;}
+.btn-s.o{background:var(--accent2);}
+
+/* Import modal */
+.imp-modal{width:860px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column;}
+.imp-drop{display:flex;align-items:center;gap:14px;background:var(--bg);border:2px dashed var(--accent2);border-radius:8px;padding:14px 20px;cursor:pointer;transition:opacity 0.2s;margin-bottom:12px;}
+.imp-drop:hover{opacity:0.8;}
+.imp-wrap{flex:1;overflow:auto;border:1px solid var(--border);border-radius:8px;min-height:180px;}
+.imp-info{margin-top:10px;padding:10px 14px;background:rgba(79,195,161,0.06);border:1px solid rgba(79,195,161,0.15);border-radius:8px;font-size:12px;color:var(--text2);line-height:1.8;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">MedBeauty <span>価格管理システム</span></div>
+  <div class="header-right">
+    <div class="last-updated" id="last-updated">レート取得中...</div>
+    <button class="btn-refresh" id="btn-refresh" onclick="fetchRates()">為替更新</button>
+  </div>
+</header>
+
+<div id="alert-bar"></div>
+
+<div class="layout">
+  <aside>
+    <div>
+      <div class="sec-label">リアルタイム為替レート</div>
+      <div id="fx-cards"></div>
+    </div>
+    <div>
+      <div class="sec-label">アラート設定</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.8;">
+        各通貨カードの「上限レート」を超えた場合、自動でアラートを表示します。<br>
+        <span style="color:var(--danger);">●</span> 赤：上限超え &nbsp;
+        <span style="color:var(--warn);">●</span> 黄：上限の95%超え
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="summary-row">
+      <div class="sum-card"><div class="sum-label">登録商品数</div><div class="sum-value" id="sum-count">0</div><div class="sum-sub">アクティブ商品</div></div>
+      <div class="sum-card"><div class="sum-label">仕入れ総額（円換算）</div><div class="sum-value" id="sum-cost">¥0</div><div class="sum-sub">現在の為替で計算</div></div>
+      <div class="sum-card"><div class="sum-label">推奨販売総額</div><div class="sum-value" id="sum-sell">¥0</div><div class="sum-sub">設定利益率適用後</div></div>
+      <div class="sum-card"><div class="sum-label">実際の販売総額</div><div class="sum-value" id="sum-actual">—</div><div class="sum-sub" id="sum-actual-sub">未設定</div></div>
+      <div class="sum-card"><div class="sum-label">平均利益率</div><div class="sum-value" id="sum-margin">—</div><div class="sum-sub">全商品の加重平均</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div class="panel-title">商品一覧</div>
+        <div class="panel-actions">
+          <button class="btn-outline o" onclick="openImportModal()">📦 BカートCSV取込</button>
+            <button class="btn-outline o" onclick="openExportModal()" id="btn-export" style="border-color:#4fc3a1;color:#4fc3a1;">📤 Bカート用CSV出力</button>
+          <button class="btn-outline" onclick="openAddModal()">＋ 商品追加</button>
+        </div>
+      </div>
+      <div class="cat-tabs" id="cat-tabs"></div>
+      <table>
+        <thead>
+          <tr>
+            <th>商品名</th>
+            <th>通貨</th>
+            <th>仕入れ原価</th>
+            <th>円換算原価</th>
+            <th>利益率</th>
+            <th>推奨販売価格</th>
+            <th>実際の販売価格</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="product-tbody"></tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<!-- Add Modal -->
+<div class="overlay" id="add-modal">
+  <div class="modal">
+    <h3>商品を追加</h3>
+    <div class="fg"><label>商品名</label><input type="text" id="f-name" placeholder="例：ヒアルロン酸製剤 A"></div>
+    <div class="fg"><label>仕入れ通貨</label>
+      <select id="f-currency">
+        <option value="KRW">🇰🇷 韓国ウォン (KRW)</option>
+        <option value="GBP">🇬🇧 英国ポンド (GBP)</option>
+        <option value="USD">🇺🇸 米ドル (USD)</option>
+        <option value="EUR">🇪🇺 ユーロ (EUR)</option>
+      </select>
+    </div>
+    <div class="fg"><label>仕入れ原価（外貨）</label><input type="number" id="f-cost" placeholder="0.00" step="0.01" min="0"></div>
+    <div class="fg"><label>利益率 (%)</label><input type="number" id="f-margin" value="40" min="0" max="500"></div>
+    <div class="mfooter">
+      <button class="btn-c" onclick="closeAddModal()">キャンセル</button>
+      <button class="btn-s" onclick="addProduct()">追加する</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import Modal -->
+<div class="overlay" id="import-modal">
+  <div class="modal imp-modal">
+    <h3>📦 BカートCSV取込</h3>
+    <label class="imp-drop">
+      <span style="font-size:24px;">📂</span>
+      <div>
+        <div style="font-size:14px;color:var(--accent2);font-weight:500;">CSVファイルを選択</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">Bカート管理画面 → 商品管理 → CSVダウンロード</div>
+      </div>
+      <input type="file" accept=".csv" id="imp-file" style="display:none;" onchange="onFileChange(this)">
+    </label>
+
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+      <span id="imp-status" style="font-size:13px;color:var(--accent);flex:1;"></span>
+      <button onclick="selAll(true)"  style="background:none;border:1px solid var(--border);color:var(--text2);padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;font-family:inherit;">すべて選択</button>
+      <button onclick="selAll(false)" style="background:none;border:1px solid var(--border);color:var(--text2);padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;font-family:inherit;">すべて解除</button>
+    </div>
+
+    <div class="imp-wrap">
+      <table>
+        <thead>
+          <tr style="background:var(--surface2);position:sticky;top:0;">
+            <th style="width:44px;">取込</th>
+            <th style="width:80px;">管理番号</th>
+            <th>商品名</th>
+            <th style="width:130px;text-align:right;">Bカート販売価格</th>
+          </tr>
+        </thead>
+        <tbody id="imp-tbody">
+          <tr class="empty-row"><td colspan="4">CSVファイルを選択してください</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="imp-info">
+      <b style="color:var(--accent);">取込後の流れ：</b>
+      商品が追加されたら、各商品の <b>仕入れ通貨・原価・利益率</b> を設定 → 推奨販売価格が自動計算されます。Bカートの現在価格は「実際の販売価格」欄に自動セットされます。
+    </div>
+
+    <div class="mfooter">
+      <button class="btn-c" onclick="closeImportModal()">キャンセル</button>
+      <button class="btn-s o" onclick="confirmImport()">✅ 選択商品を取込む</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Constants ─────────────────────────────────────────────────────
+const CURRENCIES = ['KRW','GBP','USD','EUR'];
+const CUR_SYM = { KRW:'₩', GBP:'£', USD:'$', EUR:'€' };
+const CAT_MAP = {
+  'all':'すべて',
+  '4':'ボツリヌストキシン（まとめ）','5':'ボツリヌストキシン 100単位','6':'ボツリヌストキシン 200単位',
+  '21':'ボツリヌストキシン 300単位','69':'ボツリヌストキシン 50単位',
+  '7':'クレヴィエル',
+  '22':'ヒアルロン酸（ニューラミス）','23':'ヒアルロン酸（テオシアル）','70':'ヒアルロン酸（レスチレン）',
+  '17':'ヒアルロン酸（ボディ）','27':'ヒアルロン酸（リップ・輪郭）','76':'ヒアルロン酸（HEALUX）',
+  '8':'スキンブースター','14':'リジュラン','15':'ジュベルック','18':'エクソソーム',
+  '19':'サーモン注射','73':'メソヒール','9':'脂肪溶解注射','10':'ピーリング',
+  '12':'スレッド（ボツリヌス系）','13':'スレッド（コグ・リフト）','20':'美容機器',
+  '16':'その他製剤・麻酔','24':'カニューレ・針',
+  '26':'ヒアルロニダーゼ','31':'ヒアルロニダーゼ（HIRAX）','32':'ヒアルロニダーゼ（BM）',
+  '34':'エクスパレル','71':'LHA・ララ系','75':'ネクスプラノン',
+};
+
+// ── State ─────────────────────────────────────────────────────────
+let rates      = { KRW:null, GBP:null, USD:null, EUR:null };
+let prevRates  = {};
+let products   = JSON.parse(localStorage.getItem('mbpm_products') || '[]');
+let thresholds = JSON.parse(localStorage.getItem('mbpm_thresholds') || JSON.stringify({
+  KRW:{upper:0.115,lower:0.08}, GBP:{upper:200,lower:150},
+  USD:{upper:158,lower:130},    EUR:{upper:170,lower:140},
+}));
+let activeCat  = localStorage.getItem('mbpm_activeCat') || 'all';
+let impBuf     = []; // import buffer - global variable
+
+// ── Utils ─────────────────────────────────────────────────────────
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function save(){ localStorage.setItem('mbpm_products', JSON.stringify(products)); }
+function saveThresh(){ localStorage.setItem('mbpm_thresholds', JSON.stringify(thresholds)); }
+function recPrice(p){
+  const c = (p.cost||0) * (rates[p.currency]||0);
+  const m = p.margin||40;
+  return m >= 100 ? c : c / (1 - m/100);
+}
+function parseCSV(line){
+  const r=[]; let cur='',inQ=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(c==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}
+    else if(c===','&&!inQ){r.push(cur);cur='';}
+    else cur+=c;
+  }
+  r.push(cur); return r;
+}
+
+// ── Exchange Rates ────────────────────────────────────────────────
+async function fetchRates(){
+  const btn = document.getElementById('btn-refresh');
+  btn.textContent='取得中...'; btn.disabled=true;
+
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbwTikLsQaggCLVIooww0OI6Gdika5p8s-lIiFblv5KGYRccpZSxL_sI-A6JX7pDXJAR/exec';
+
+  try {
+    const r = await fetch(GAS_URL, {cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json();
+    if(!d.USD || d.USD<100 || d.USD>300) throw new Error('無効な値: '+JSON.stringify(d));
+    prevRates = {...rates};
+    rates = {
+      USD: d.USD,
+      GBP: d.GBP,
+      EUR: d.EUR,
+      KRW: (d.KRW && d.KRW > 1) ? d.KRW/100 : d.KRW,
+    };
+    document.getElementById('last-updated').textContent =
+      'リアルタイム更新: '+new Date().toLocaleTimeString('ja-JP');
+    console.log('✅ レート取得成功:', rates);
+  } catch(e) {
+    console.error('レート取得失敗:', e.message);
+    if(!rates.KRW) rates={KRW:0.108,GBP:191.2,USD:149.8,EUR:163.5};
+    document.getElementById('last-updated').textContent='前回のレートを表示中';
+  }
+
+  renderFx(); renderProducts(); renderCatTabs(); renderSummary(); checkAlerts();
+  btn.textContent='為替更新'; btn.disabled=false;
+}
+
+// ── FX Cards ─────────────────────────────────────────────────────
+function renderFx(){
+  const el=document.getElementById('fx-cards'); el.innerHTML='';
+  CURRENCIES.forEach(cur=>{
+    const rate=rates[cur]; if(!rate) return;
+    const th=thresholds[cur], prev=prevRates[cur];
+    let trend='fl',tl='±0.00%';
+    if(prev){const d=(rate-prev)/prev*100; if(d>0.01){trend='up';tl='+'+d.toFixed(2)+'%';}else if(d<-0.01){trend='dn';tl=d.toFixed(2)+'%';}}
+    const ratio=th.upper>0?rate/th.upper:0;
+    const isA=th.upper>0&&rate>th.upper, isW=th.upper>0&&!isA&&rate>th.upper*0.95;
+    const fill=isA?'var(--danger)':isW?'var(--warn)':'var(--accent)';
+    const dec=cur==='KRW'?4:2;
+    const d=document.createElement('div');
+    d.className='fx-card'+(isA?' is-alert':isW?' is-warn':'');
+    d.innerHTML=`
+      <div class="fx-top"><span class="fx-code ${cur}">${cur} → JPY</span><span class="fx-badge ${trend}">${tl}</span></div>
+      <div class="fx-rate">¥${rate.toFixed(dec)}<span style="font-size:12px;color:var(--text2);"> / ${CUR_SYM[cur]}1</span></div>
+      <div class="fx-inputs">
+        <div><label class="fx-inp-label">上限レート (¥)</label><input class="fx-inp" type="number" value="${th.upper}" step="${cur==='KRW'?'0.001':'1'}" onchange="updThresh('${cur}','upper',this.value)"></div>
+        <div><label class="fx-inp-label">下限レート (¥)</label><input class="fx-inp" type="number" value="${th.lower}" step="${cur==='KRW'?'0.001':'1'}" onchange="updThresh('${cur}','lower',this.value)"></div>
+      </div>
+      <div class="fx-bar"><div class="fx-fill" style="width:${Math.min(ratio*100,100)}%;background:${fill}"></div></div>`;
+    el.appendChild(d);
+  });
+}
+function updThresh(cur,type,val){ thresholds[cur][type]=parseFloat(val)||0; saveThresh(); renderFx(); checkAlerts(); }
+
+// ── Alerts ────────────────────────────────────────────────────────
+function checkAlerts(){
+  const bar=document.getElementById('alert-bar'); const items=[];
+  CURRENCIES.forEach(cur=>{
+    const r=rates[cur]; if(!r) return;
+    const th=thresholds[cur], dec=cur==='KRW'?4:2;
+    if(th.upper>0&&r>th.upper) items.push({w:false,l:`${cur} 上限超過`,m:`¥${r.toFixed(dec)} > ¥${th.upper}`});
+    else if(th.upper>0&&r>th.upper*0.95) items.push({w:true,l:`${cur} 上限に接近`,m:`¥${r.toFixed(dec)} ≈ ¥${th.upper}`});
+    if(th.lower>0&&r<th.lower) items.push({w:true,l:`${cur} 下限割れ`,m:`¥${r.toFixed(dec)} < ¥${th.lower}`});
+  });
+  if(!items.length){bar.className='';bar.innerHTML='';return;}
+  bar.className='show';
+  bar.innerHTML='<span style="font-size:12px;color:var(--text2);margin-right:4px;">⚠ アラート:</span>'+
+    items.map(a=>`<div class="alert-chip${a.w?' warn':''}"><div class="alert-dot"></div><span class="chip-label">${a.l}</span><span class="chip-msg">${a.m}</span></div>`).join('');
+}
+
+// ── Category Tabs ─────────────────────────────────────────────────
+function renderCatTabs(){
+  const el=document.getElementById('cat-tabs'); el.innerHTML='';
+  const used=new Set(products.map(p=>p.category||'__none__'));
+  const tabs=[{id:'all',name:'すべて'}];
+  Object.entries(CAT_MAP).forEach(([id,name])=>{ if(id!=='all'&&used.has(id)) tabs.push({id,name}); });
+  if(used.has('__none__')||used.has('')) tabs.push({id:'__none__',name:'未分類'});
+  tabs.forEach(cat=>{
+    const cnt=cat.id==='all'?products.length:cat.id==='__none__'?products.filter(p=>!p.category).length:products.filter(p=>p.category===cat.id).length;
+    const btn=document.createElement('button');
+    btn.className='cat-tab'+(activeCat===cat.id?' active':'');
+    btn.innerHTML=`${esc(cat.name)}<span class="cat-cnt">${cnt}</span>`;
+    btn.onclick=()=>{ activeCat=cat.id; localStorage.setItem('mbpm_activeCat',activeCat); renderCatTabs(); renderProducts(); };
+    el.appendChild(btn);
+  });
+}
+
+// ── Product Table ─────────────────────────────────────────────────
+function renderProducts(){
+  const tbody=document.getElementById('product-tbody');
+  const filtered=products.map((p,i)=>({p,i})).filter(({p})=>
+    activeCat==='all'?true:activeCat==='__none__'?!p.category:p.category===activeCat
+  );
+  if(products.length===0){
+    tbody.innerHTML='<tr class="empty-row"><td colspan="8">「BカートCSV取込」または「＋ 商品追加」から商品を追加してください。</td></tr>';
+    renderSummary(); return;
+  }
+  if(filtered.length===0){
+    tbody.innerHTML='<tr class="empty-row"><td colspan="8">このカテゴリに商品がありません。</td></tr>';
+    renderSummary(); return;
+  }
+  tbody.innerHTML='';
+  filtered.forEach(({p,i})=>{
+    const costJpy=(p.cost||0)*(rates[p.currency]||0);
+    const margin=p.margin||40;
+    const sell=recPrice(p);
+    const actual=p.actualPrice||0;
+    const mc=margin>=40?'good':margin>=25?'mid':'low';
+    let diffHtml='';
+    if(actual>0&&sell>0){
+      const diff=actual-sell, pct=(diff/sell*100).toFixed(1);
+      if(Math.abs(diff)<1) diffHtml='<span class="diff same">＝ 推奨通り</span>';
+      else if(diff>0) diffHtml=`<span class="diff over">▲ +¥${Math.round(diff).toLocaleString()} (+${pct}%)</span>`;
+      else diffHtml=`<span class="diff under">▼ ¥${Math.round(diff).toLocaleString()} (${pct}%)</span>`;
+    }
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td><input class="td-name" type="text" value="${esc(p.name)}" onchange="updP(${i},'name',this.value)"></td>
+      <td>
+        <span class="cur-dot ${p.currency}"></span>
+        <select class="td-sel" onchange="updP(${i},'currency',this.value)">
+          ${CURRENCIES.map(c=>`<option value="${c}"${c===p.currency?' selected':''}>${c}</option>`).join('')}
+        </select>
+      </td>
+      <td>
+        <span style="color:var(--text2);font-size:12px;">${CUR_SYM[p.currency]}</span>
+        <input class="td-inp" type="number" value="${p.cost||0}" min="0" step="0.01" style="width:88px;" onchange="updP(${i},'cost',parseFloat(this.value)||0)">
+      </td>
+      <td><span class="price-cost">¥${Math.round(costJpy).toLocaleString()}</span></td>
+      <td>
+        <input class="td-inp" type="number" value="${margin}" min="0" max="500" style="width:52px;text-align:right;" onchange="updP(${i},'margin',parseFloat(this.value)||0)">
+        <span style="color:var(--text2);font-size:12px;margin:0 4px;">%</span>
+        <span class="mbadge ${mc}">${margin}%</span>
+      </td>
+      <td><span class="price-rec">¥${Math.round(sell).toLocaleString()}</span></td>
+      <td>
+        <span style="color:var(--text2);font-size:12px;">¥</span>
+        <input class="td-inp" type="number" value="${actual||''}" placeholder="未設定" min="0" style="width:88px;" onchange="updP(${i},'actualPrice',parseFloat(this.value)||0)">
+        ${diffHtml}
+      </td>
+      <td><button class="btn-del" onclick="delP(${i})">✕</button></td>`;
+    tbody.appendChild(tr);
+  });
+  renderSummary();
+}
+
+function updP(i,k,v){ products[i][k]=v; save(); renderProducts(); renderCatTabs(); }
+function delP(i){ if(!confirm('削除しますか？')) return; products.splice(i,1); save(); renderProducts(); renderCatTabs(); }
+
+// ── Summary ───────────────────────────────────────────────────────
+function renderSummary(){
+  let tc=0,ts=0,ta=0,ac=0;
+  products.forEach(p=>{
+    tc+=(p.cost||0)*(rates[p.currency]||0);
+    ts+=recPrice(p);
+    if(p.actualPrice>0){ta+=p.actualPrice;ac++;}
+  });
+  document.getElementById('sum-count').textContent=products.length;
+  document.getElementById('sum-cost').textContent='¥'+Math.round(tc).toLocaleString();
+  document.getElementById('sum-sell').textContent='¥'+Math.round(ts).toLocaleString();
+  document.getElementById('sum-actual').textContent=ac>0?'¥'+Math.round(ta).toLocaleString():'—';
+  document.getElementById('sum-actual-sub').textContent=ac>0?`${ac}商品設定済み`:'未設定';
+  document.getElementById('sum-margin').textContent=products.length>0&&ts>0?((1-tc/ts)*100).toFixed(1)+'%':'—';
+}
+
+// ── Add Modal ─────────────────────────────────────────────────────
+function openAddModal(){ document.getElementById('add-modal').classList.add('show'); document.getElementById('f-name').focus(); }
+function closeAddModal(){ document.getElementById('add-modal').classList.remove('show'); }
+function addProduct(){
+  const name=document.getElementById('f-name').value.trim();
+  const currency=document.getElementById('f-currency').value;
+  const cost=parseFloat(document.getElementById('f-cost').value)||0;
+  const margin=parseFloat(document.getElementById('f-margin').value)||40;
+  if(!name){alert('商品名を入力してください');return;}
+  products.push({name,currency,cost,margin,actualPrice:0,category:''});
+  save(); renderProducts(); renderCatTabs(); closeAddModal();
+  document.getElementById('f-name').value='';
+  document.getElementById('f-cost').value='';
+  document.getElementById('f-margin').value='40';
+}
+
+// ── Import Modal ──────────────────────────────────────────────────
+function openImportModal(){
+  impBuf=[];
+  document.getElementById('imp-status').textContent='';
+  document.getElementById('imp-tbody').innerHTML='<tr class="empty-row"><td colspan="4">CSVファイルを選択してください</td></tr>';
+  document.getElementById('imp-file').value='';
+  document.getElementById('import-modal').classList.add('show');
+}
+function closeImportModal(){ document.getElementById('import-modal').classList.remove('show'); }
+
+function onFileChange(input){
+  const file=input.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const text=new TextDecoder('shift-jis').decode(e.target.result);
+      const lines=text.split(/\r?\n/);
+      const hdrs=parseCSV(lines[0]);
+      const iId=hdrs.indexOf('【基本】Bカート商品ID');
+      const iNm=hdrs.indexOf('【基本】商品名');
+      const iCd=hdrs.indexOf('【基本】商品管理番号');
+      const iPr=hdrs.indexOf('【セット】単価');
+      const iCt=hdrs.indexOf('【基本】メインカテゴリID');
+      if(iId<0||iNm<0||iPr<0){
+        document.getElementById('imp-status').textContent='❌ Bカートの商品CSVではないようです'; return;
+      }
+      impBuf=[];
+      exportOriginalHeaders = hdrs;
+      exportOriginalRows = [];
+      const seen=new Set();
+      for(let i=1;i<lines.length;i++){
+        if(!lines[i].trim()) continue;
+        const row=parseCSV(lines[i]);
+        const bid=(row[iId]||'').trim();
+        if(!bid||seen.has(bid)) continue;
+        seen.add(bid);
+        impBuf.push({
+          bcartId: bid,
+          name:    (row[iNm]||'').trim(),
+          code:    (row[iCd]||'').trim(),
+          price:   parseInt(row[iPr])||0,
+          catId:   (row[iCt]||'').trim(),
+        });
+      }
+      renderImpPreview();
+      document.getElementById('imp-status').textContent=`✅ ${impBuf.length}件の商品を読み込みました`;
+    }catch(err){
+      document.getElementById('imp-status').textContent='❌ 読み込みエラー: '+err.message;
+      console.error(err);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function renderImpPreview(){
+  const tbody=document.getElementById('imp-tbody'); tbody.innerHTML='';
+  impBuf.forEach((bp,bi)=>{
+    const exists=products.some(p=>p.bcartId===bp.bcartId);
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td><input type="checkbox" class="imp-chk" data-idx="${bi}" ${!exists?'checked':''} style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent);"></td>
+      <td style="font-family:'DM Mono',monospace;font-size:12px;color:var(--text2);">${esc(bp.code)}</td>
+      <td style="font-size:13px;">${esc(bp.name)}${exists?'<span style="font-size:11px;color:var(--warn);margin-left:6px;">（登録済）</span>':''}</td>
+      <td style="font-family:'DM Mono',monospace;color:var(--accent2);text-align:right;">¥${bp.price.toLocaleString()}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function selAll(v){ document.querySelectorAll('.imp-chk').forEach(c=>c.checked=v); }
+
+function confirmImport(){
+  if(impBuf.length===0){alert('CSVを先に読み込んでください');return;}
+  const checked=new Set([...document.querySelectorAll('.imp-chk:checked')].map(c=>parseInt(c.dataset.idx)));
+  if(checked.size===0){alert('取り込む商品を選択してください');return;}
+  let added=0,updated=0;
+  impBuf.forEach((bp,bi)=>{
+    if(!checked.has(bi)) return;
+    const xi=products.findIndex(p=>p.bcartId===bp.bcartId);
+    if(xi>=0){
+      products[xi].name=bp.name;
+      products[xi].bcartCode=bp.code;
+      products[xi].actualPrice=bp.price;
+      if(bp.catId) products[xi].category=bp.catId;
+      updated++;
+    } else {
+      products.push({name:bp.name,currency:'KRW',cost:0,margin:40,actualPrice:bp.price,bcartId:bp.bcartId,bcartCode:bp.code,category:bp.catId||''});
+      added++;
+    }
+  });
+  save(); renderProducts(); renderCatTabs(); closeImportModal();
+  const msg=[];
+  if(added)   msg.push(`${added}件を新規追加`);
+  if(updated) msg.push(`${updated}件を更新`);
+  alert('✅ '+msg.join('、')+'しました。\n仕入れ通貨・原価・利益率を設定してください。');
+}
+
+// ── Bcart CSV Export ─────────────────────────────────────────────
+let exportOriginalRows = [];    // 元CSVの全行
+let exportOriginalHeaders = []; // 元CSVのヘッダー
+
+// 取込時に元データを保持する（onFileChangeを拡張）
+// impBufに元行データも持たせる
+function openExportModal() {
+  if (exportOriginalRows.length === 0) {
+    alert('先にBカートCSVを取込んでください。\n取込時に元データが保存されます。');
+    return;
+  }
+  // プレビューを生成
+  renderExportPreview();
+  document.getElementById('export-modal').classList.add('show');
+}
+function closeExportModal() {
+  document.getElementById('export-modal').classList.remove('show');
+}
+
+function renderExportPreview() {
+  const tbody = document.getElementById('exp-tbody');
+  tbody.innerHTML = '';
+  let count = 0;
+  products.forEach(p => {
+    if (!p.bcartId || !p.actualPrice) return;
+    const newPrice = Math.round(p.actualPrice);
+    // 元の価格を探す
+    const origRow = exportOriginalRows.find(r => {
+      const idxId = exportOriginalHeaders.indexOf('【基本】Bカート商品ID');
+      return r[idxId] === p.bcartId;
+    });
+    const idxPrice = exportOriginalHeaders.indexOf('【セット】単価');
+    const origPrice = origRow ? parseInt(origRow[idxPrice]) || 0 : 0;
+    const changed = origPrice !== newPrice;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="checkbox" class="exp-chk" data-bcartid="${esc(p.bcartId)}" ${changed?'checked':''} style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent);"></td>
+      <td style="font-size:12px;color:var(--text2);font-family:'DM Mono',monospace;">${esc(p.bcartCode||'')}</td>
+      <td style="font-size:13px;">${esc(p.name)}${changed?'<span style="font-size:11px;color:var(--accent);margin-left:6px;">変更あり</span>':''}</td>
+      <td style="font-family:'DM Mono',monospace;text-align:right;color:var(--text2);">¥${origPrice.toLocaleString()}</td>
+      <td style="font-family:'DM Mono',monospace;text-align:right;color:var(--accent2);font-weight:700;">¥${newPrice.toLocaleString()}</td>
+    `;
+    tbody.appendChild(tr);
+    count++;
+  });
+  if (count === 0) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="5">「実際の販売価格」が設定されている商品がありません。</td></tr>';
+  }
+  document.getElementById('exp-count').textContent = count + '件';
+}
+
+function selectAllExport(val) {
+  document.querySelectorAll('.exp-chk').forEach(c => c.checked = val);
+}
+
+function confirmExport() {
+  if (exportOriginalRows.length === 0) {
+    alert('元のCSVデータがありません。先にBカートCSVを取込んでください。');
+    return;
+  }
+  const checkedIds = new Set(
+    [...document.querySelectorAll('.exp-chk:checked')].map(c => c.dataset.bcartid)
+  );
+  if (checkedIds.size === 0) {
+    alert('出力する商品を選択してください。');
+    return;
+  }
+
+  const idxId    = exportOriginalHeaders.indexOf('【基本】Bカート商品ID');
+  const idxPrice = exportOriginalHeaders.indexOf('【セット】単価');
+
+  // 元CSVをコピーして価格を更新
+  const updatedRows = exportOriginalRows.map(row => {
+    const newRow = [...row];
+    const bid = row[idxId];
+    if (checkedIds.has(bid)) {
+      const p = products.find(p => p.bcartId === bid);
+      if (p && p.actualPrice) {
+        newRow[idxPrice] = String(Math.round(p.actualPrice));
+      }
+    }
+    return newRow;
+  });
+
+  // CSV生成（Shift-JIS対応のためUTF-8 BOMで出力）
+  const lines = [exportOriginalHeaders, ...updatedRows].map(row =>
+    row.map(cell => {
+      const s = String(cell ?? '');
+      return (s.includes(',') || s.includes('"') || s.includes('\n'))
+        ? '"' + s.replace(/"/g, '""') + '"'
+        : s;
+    }).join(',')
+  ).join('\r\n');
+
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + lines], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'bcart_price_update_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  closeExportModal();
+  alert('✅ ' + checkedIds.size + '件の価格を更新したCSVを出力しました。\nBカート管理画面 → 商品管理 → CSVインポート で反映してください。');
+}
+
+
+// ── Init ──────────────────────────────────────────────────────────
+if(products.length===0){
+  products=[
+    {name:'ナボタ100単位',currency:'KRW',cost:85000,margin:45,actualPrice:44000,bcartId:'3',category:'5'},
+    {name:'ボツラックス100単位',currency:'KRW',cost:75000,margin:40,actualPrice:48000,bcartId:'5',category:'5'},
+    {name:'ニューラミス Light',currency:'KRW',cost:25000,margin:40,actualPrice:3500,bcartId:'9',category:'22'},
+    {name:'Rejuviel V',currency:'GBP',cost:65,margin:40,actualPrice:9000,bcartId:'7',category:'7'},
+  ];
+  save();
+}
+renderCatTabs();
+fetchRates();
+setInterval(fetchRates, 5*60*1000);
+</script>
+
+<!-- Export Modal -->
+<div class="overlay" id="export-modal">
+  <div class="modal imp-modal">
+    <h3>📤 Bカート用CSV出力</h3>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:14px;">
+      「実際の販売価格」が設定された商品の価格をBカートCSVに書き出します。<br>
+      出力後、Bカート管理画面 → 商品管理 → CSVインポート で反映されます。
+    </p>
+
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+      <span style="font-size:13px;color:var(--accent);flex:1;">対象商品: <b id="exp-count">0件</b></span>
+      <button onclick="selectAllExport(true)"  style="background:none;border:1px solid var(--border);color:var(--text2);padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;font-family:inherit;">すべて選択</button>
+      <button onclick="selectAllExport(false)" style="background:none;border:1px solid var(--border);color:var(--text2);padding:3px 10px;border-radius:4px;cursor:pointer;font-size:12px;font-family:inherit;">すべて解除</button>
+    </div>
+
+    <div class="imp-wrap">
+      <table>
+        <thead>
+          <tr style="background:var(--surface2);position:sticky;top:0;">
+            <th style="width:44px;">出力</th>
+            <th style="width:80px;">管理番号</th>
+            <th>商品名</th>
+            <th style="width:120px;text-align:right;">現在の価格</th>
+            <th style="width:120px;text-align:right;">新しい価格</th>
+          </tr>
+        </thead>
+        <tbody id="exp-tbody">
+          <tr class="empty-row"><td colspan="5">BカートCSVを取込んでください</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="imp-info" style="background:rgba(240,168,104,0.06);border-color:rgba(240,168,104,0.2);">
+      <b style="color:var(--accent2);">注意：</b>
+      出力されたCSVをBカートにインポートすると、選択した商品の<b>【セット】単価</b>が上書きされます。
+      インポート前に内容を必ず確認してください。
+    </div>
+
+    <div class="mfooter">
+      <button class="btn-c" onclick="closeExportModal()">キャンセル</button>
+      <button class="btn-s o" onclick="confirmExport()">📥 CSVをダウンロード</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
