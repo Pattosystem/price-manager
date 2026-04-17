@@ -389,13 +389,20 @@ function parseCSV(line){
 
 // ── Supabase DB ──────────────────────────────────────────────────
 async function loadProducts(){
+  console.log('Loading products from Supabase...');
   const {data,error}=await sb.from('products').select('*').order('created_at');
-  if(error){console.error(error);return;}
+  if(error){
+    console.error('❌ loadProducts error:', error);
+    alert('商品の読み込みに失敗しました: ' + error.message);
+    return;
+  }
+  console.log('✅ Raw data from Supabase:', data?.length, '件');
   products=data.map(r=>({
     id:r.id, name:r.name, currency:r.currency, cost:r.cost,
     margin:r.margin, actualPrice:r.actual_price, bcartId:r.bcart_id,
     bcartCode:r.bcart_code, category:r.category||'',
   }));
+  console.log('✅ Products mapped:', products.length, '件');
 }
 
 async function saveProduct(p){
@@ -848,8 +855,18 @@ function confirmExport(){
 // ── Init ─────────────────────────────────────────────────────────
 async function init(){
   showLoading('データを読み込み中...');
-  await loadRatesFromDB();
-  await loadProducts();
+  try {
+    await loadRatesFromDB();
+    console.log('✅ Rates loaded:', rates);
+  } catch(e) {
+    console.error('❌ Rates load error:', e);
+  }
+  try {
+    await loadProducts();
+    console.log('✅ Products loaded:', products.length, '件');
+  } catch(e) {
+    console.error('❌ Products load error:', e);
+  }
   hideLoading();
   renderFx();renderProducts();renderCatTabs();renderSummary();renderEmergency();checkAlerts();
   // 起動時に為替を自動更新
