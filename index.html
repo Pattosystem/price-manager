@@ -893,22 +893,31 @@ async function savePriceHistory(p, oldCost){
   });
 }
 
+let currentHistProductId = null;
+let currentHistProductIdx = null;
+
 async function openHistModal(i){
   const p = products[i];
+  currentHistProductIdx = i;
+  currentHistProductId = p.id;
   document.getElementById('hist-modal-title').textContent = p.name;
-  document.getElementById('hist-tbody').innerHTML =
-    '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;">読み込み中...</td></tr>';
   document.getElementById('hist-modal').classList.add('show');
+  await loadHistData();
+}
+
+async function loadHistData(){
+  document.getElementById('hist-tbody').innerHTML =
+    '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px;">読み込み中...</td></tr>';
 
   const {data, error} = await sb.from('price_history')
     .select('*')
-    .eq('product_id', p.id)
+    .eq('product_id', currentHistProductId)
     .order('changed_at', {ascending: false})
-    .limit(50);
+    .limit(100);
 
   if(error || !data || data.length === 0){
     document.getElementById('hist-tbody').innerHTML =
-      '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:24px;">履歴がまだありません。</td></tr>';
+      '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:24px;">履歴がまだありません。</td></tr>';
     return;
   }
 
@@ -920,19 +929,78 @@ async function openHistModal(i){
     const cls = diff > 0 ? 'hist-up' : diff < 0 ? 'hist-dn' : '';
     const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '―';
     const dt = new Date(h.changed_at).toLocaleString('ja-JP');
-    return `<tr>
+    return `<tr id="hist-row-${h.id}">
       <td class="hist-cell" style="color:var(--text2);font-size:12px;">${dt}</td>
-      <td class="hist-cell mono">${sym}${Number(h.old_cost).toLocaleString()}</td>
+      <td class="hist-cell mono" id="hc-old-${h.id}">${sym}${Number(h.old_cost).toLocaleString()}</td>
       <td class="hist-cell mono">→</td>
-      <td class="hist-cell mono">${sym}${Number(h.new_cost).toLocaleString()}</td>
+      <td class="hist-cell mono" id="hc-new-${h.id}">${sym}${Number(h.new_cost).toLocaleString()}</td>
       <td class="hist-cell mono ${cls}">${arrow} ${sym}${Math.abs(diff).toLocaleString()}</td>
       <td class="hist-cell mono" style="color:var(--text2);font-size:12px;">
         ¥${Number(h.old_cost_jpy).toLocaleString()} → ¥${Number(h.new_cost_jpy).toLocaleString()}
-        <span class="${cls}" style="margin-left:6px;">(${diffJpy>=0?'+':''}¥${Number(diffJpy).toLocaleString()})</span>
+        <span class="${cls}" style="margin-left:4px;">(${diffJpy>=0?'+':''}¥${Number(diffJpy).toLocaleString()})</span>
+      </td>
+      <td class="hist-cell" style="display:flex;gap:6px;">
+        <button onclick="editHistRow('${h.id}','${sym}',${h.old_cost},${h.new_cost},'${h.currency}')"
+          style="background:none;border:1px solid var(--border);color:var(--text2);padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-family:inherit;">✏️ 修正</button>
+        <button onclick="deleteHistRow('${h.id}')"
+          style="background:none;border:1px solid var(--border);color:var(--danger);padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-family:inherit;">🗑 削除</button>
       </td>
     </tr>`;
   }).join('');
 }
+
+async function deleteHistRow(histId){
+  if(!confirm('この履歴を削除しますか？')) return;
+  const {error} = await sb.from('price_history').delete().eq('id', histId);
+  if(error){ alert('削除に失敗しました: ' + error.message); return; }
+  document.getElementById('hist-row-'+histId)?.remove();
+  // Check if empty
+  const tbody = document.getElementById('hist-tbody');
+  if(tbody.children.length === 0){
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:24px;">履歴がまだありません。</td></tr>';
+  }
+}
+
+function editHistRow(histId, sym, oldCost, newCost, currency){
+  // Replace row with edit form
+  const row = document.getElementById('hist-row-'+histId);
+  if(!row) return;
+  row.innerHTML = `
+    <td class="hist-cell" colspan="4">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <label style="font-size:12px;color:var(--text2);">変更前:</label>
+        <input type="number" id="edit-old-${histId}" value="${oldCost}"
+          style="width:100px;background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:4px 8px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;outline:none;">
+        <label style="font-size:12px;color:var(--text2);">変更後:</label>
+        <input type="number" id="edit-new-${histId}" value="${newCost}"
+          style="width:100px;background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:4px 8px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;outline:none;">
+      </div>
+    </td>
+    <td class="hist-cell"></td>
+    <td class="hist-cell"></td>
+    <td class="hist-cell" style="display:flex;gap:6px;">
+      <button onclick="saveHistEdit('${histId}','${currency}')"
+        style="background:var(--accent);border:none;color:#000;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-family:inherit;font-weight:500;">保存</button>
+      <button onclick="loadHistData()"
+        style="background:none;border:1px solid var(--border);color:var(--text2);padding:4px 8px;border-radius:4px;cursor:pointer;font-size:11px;font-family:inherit;">キャンセル</button>
+    </td>`;
+}
+
+async function saveHistEdit(histId, currency){
+  const oldCost = parseFloat(document.getElementById('edit-old-'+histId).value) || 0;
+  const newCost = parseFloat(document.getElementById('edit-new-'+histId).value) || 0;
+  const rate = rates[currency] || 0;
+  const {error} = await sb.from('price_history').update({
+    old_cost: oldCost,
+    new_cost: newCost,
+    old_cost_jpy: Math.round(oldCost * rate),
+    new_cost_jpy: Math.round(newCost * rate),
+    exchange_rate: rate,
+  }).eq('id', histId);
+  if(error){ alert('更新に失敗しました: ' + error.message); return; }
+  await loadHistData();
+}
+
 function closeHistModal(){ document.getElementById('hist-modal').classList.remove('show'); }
 
 // ── Init ─────────────────────────────────────────────────────────
@@ -961,22 +1029,23 @@ init();
 
 <!-- History Modal -->
 <div class="overlay" id="hist-modal">
-  <div class="modal imp-modal" style="width:900px;">
+  <div class="modal imp-modal" style="width:980px;">
     <h3>📋 仕入れ価格変更履歴：<span id="hist-modal-title" style="color:var(--accent);font-size:14px;"></span></h3>
     <div class="imp-wrap">
       <table>
         <thead>
           <tr style="background:var(--surface2);position:sticky;top:0;">
             <th style="width:150px;">変更日時</th>
-            <th>変更前</th>
-            <th style="width:30px;"></th>
-            <th>変更後</th>
+            <th style="width:110px;">変更前</th>
+            <th style="width:24px;"></th>
+            <th style="width:110px;">変更後</th>
             <th style="width:120px;">差額（外貨）</th>
             <th>円換算（変更前→後）</th>
+            <th style="width:120px;">操作</th>
           </tr>
         </thead>
         <tbody id="hist-tbody">
-          <tr><td colspan="6" style="text-align:center;color:var(--text3);padding:24px;">履歴がありません</td></tr>
+          <tr><td colspan="7" style="text-align:center;color:var(--text3);padding:24px;">履歴がありません</td></tr>
         </tbody>
       </table>
     </div>
