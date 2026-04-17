@@ -146,6 +146,19 @@ tr:hover td{background:rgba(255,255,255,0.012);}
   .emergency-title { font-size:14px; font-weight:500; color:var(--danger); }
   .emergency-sub { font-size:12px; color:var(--text2); margin-left:auto; }
 
+
+  /* History */
+  .hist-btn {
+    background: none; border: none; color: var(--text3); cursor: pointer;
+    font-size: 13px; padding: 2px 6px; transition: color 0.15s;
+  }
+  .hist-btn:hover { color: var(--accent); }
+  .hist-row { display: grid; grid-template-columns: 140px 1fr 1fr 1fr 1fr 1fr; gap: 0; }
+  .hist-cell { padding: 10px 14px; border-top: 1px solid var(--border); font-size: 13px; display: flex; align-items: center; }
+  .hist-cell.mono { font-family: 'DM Mono', monospace; }
+  .hist-up { color: var(--danger); }
+  .hist-dn { color: var(--accent); }
+
   .imp-info{margin-top:10px;padding:10px 14px;background:rgba(79,195,161,0.06);border:1px solid rgba(79,195,161,0.15);border-radius:8px;font-size:12px;color:var(--text2);line-height:1.8;}
 .loading-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:300;align-items:center;justify-content:center;flex-direction:column;gap:12px;}
 .loading-overlay.show{display:flex;}
@@ -238,7 +251,7 @@ tr:hover td{background:rgba(255,255,255,0.012);}
         <thead>
           <tr>
             <th>商品名</th><th>通貨</th><th>仕入れ原価</th><th>円換算原価</th>
-            <th>利益率</th><th>推奨販売価格</th><th>実際の販売価格</th><th></th>
+            <th>利益率</th><th>推奨販売価格</th><th>実際の販売価格</th><th>履歴</th><th></th>
           </tr>
         </thead>
         <tbody id="product-tbody"></tbody>
@@ -610,11 +623,11 @@ function renderProducts(){
     return catMatch && searchMatch;
   });
   if(products.length===0){
-    tbody.innerHTML='<tr class="empty-row"><td colspan="8">「BカートCSV取込」または「＋ 商品追加」から商品を追加してください。</td></tr>';
+    tbody.innerHTML='<tr class="empty-row"><td colspan="9">「BカートCSV取込」または「＋ 商品追加」から商品を追加してください。</td></tr>';
     renderSummary();return;
   }
   if(filtered.length===0){
-    tbody.innerHTML='<tr class="empty-row"><td colspan="8">このカテゴリに商品がありません。</td></tr>';
+    tbody.innerHTML='<tr class="empty-row"><td colspan="9">このカテゴリに商品がありません。</td></tr>';
     renderSummary();return;
   }
   tbody.innerHTML='';
@@ -640,6 +653,7 @@ function renderProducts(){
       <td><input class="td-inp" type="number" value="${margin}" min="0" max="500" style="width:52px;text-align:right;" onchange="updP(${i},'margin',parseFloat(this.value)||0)"><span style="color:var(--text2);font-size:12px;margin:0 4px;">%</span><span class="mbadge ${mc}">${margin}%</span></td>
       <td><span class="price-rec">¥${Math.round(sell).toLocaleString()}</span></td>
       <td><span style="color:var(--text2);font-size:12px;">¥</span><input class="td-inp" type="number" value="${actual||''}" placeholder="未設定" min="0" style="width:88px;" onchange="updP(${i},'actualPrice',parseFloat(this.value)||0)">${diffHtml}</td>
+      <td><button class="hist-btn" onclick="openHistModal(${i})" title="仕入れ価格履歴">📋</button></td>
       <td><button class="btn-del" onclick="delP(${i})">✕</button></td>`;
     tbody.appendChild(tr);
   });
@@ -648,8 +662,13 @@ function renderProducts(){
 
 // Debounce timers for save
 const saveTimers = {};
+const prevCosts = {}; // track previous cost values
 
 async function updP(i,k,v){
+  // Track cost change for history
+  if(k === 'cost'){
+    if(prevCosts[i] === undefined) prevCosts[i] = products[i].cost || 0;
+  }
   products[i][k]=v;
   // Show pending indicator
   const indicator = document.getElementById('save-indicator');
@@ -658,6 +677,11 @@ async function updP(i,k,v){
   clearTimeout(saveTimers[i]);
   saveTimers[i] = setTimeout(async()=>{
     await saveProduct(products[i]);
+    // Save price history if cost changed
+    if(k === 'cost' && prevCosts[i] !== undefined && prevCosts[i] !== products[i].cost && products[i].id){
+      await savePriceHistory(products[i], prevCosts[i]);
+      prevCosts[i] = products[i].cost;
+    }
     if(indicator){ indicator.textContent='✅ 保存済み'; indicator.style.color='var(--accent)';
       setTimeout(()=>{ if(indicator) indicator.textContent=''; }, 2000); }
     renderProducts();renderCatTabs();
@@ -853,6 +877,64 @@ function confirmExport(){
   alert('✅ '+checkedIds.size+'件の価格を更新したCSVを出力しました。\nBカート管理画面 → 商品管理 → CSVインポート で反映してください。');
 }
 
+
+// ── Price History ─────────────────────────────────────────────────
+async function savePriceHistory(p, oldCost){
+  const rate = rates[p.currency] || 0;
+  await sb.from('price_history').insert({
+    product_id:   p.id,
+    product_name: p.name,
+    currency:     p.currency,
+    old_cost:     oldCost,
+    new_cost:     p.cost,
+    old_cost_jpy: Math.round(oldCost * rate),
+    new_cost_jpy: Math.round(p.cost * rate),
+    exchange_rate: rate,
+  });
+}
+
+async function openHistModal(i){
+  const p = products[i];
+  document.getElementById('hist-modal-title').textContent = p.name;
+  document.getElementById('hist-tbody').innerHTML =
+    '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px;">読み込み中...</td></tr>';
+  document.getElementById('hist-modal').classList.add('show');
+
+  const {data, error} = await sb.from('price_history')
+    .select('*')
+    .eq('product_id', p.id)
+    .order('changed_at', {ascending: false})
+    .limit(50);
+
+  if(error || !data || data.length === 0){
+    document.getElementById('hist-tbody').innerHTML =
+      '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:24px;">履歴がまだありません。</td></tr>';
+    return;
+  }
+
+  const CUR_SYM_MAP = {KRW:'₩',GBP:'£',USD:'$',EUR:'€'};
+  document.getElementById('hist-tbody').innerHTML = data.map(h => {
+    const diff = h.new_cost - h.old_cost;
+    const diffJpy = h.new_cost_jpy - h.old_cost_jpy;
+    const sym = CUR_SYM_MAP[h.currency] || '';
+    const cls = diff > 0 ? 'hist-up' : diff < 0 ? 'hist-dn' : '';
+    const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '―';
+    const dt = new Date(h.changed_at).toLocaleString('ja-JP');
+    return `<tr>
+      <td class="hist-cell" style="color:var(--text2);font-size:12px;">${dt}</td>
+      <td class="hist-cell mono">${sym}${Number(h.old_cost).toLocaleString()}</td>
+      <td class="hist-cell mono">→</td>
+      <td class="hist-cell mono">${sym}${Number(h.new_cost).toLocaleString()}</td>
+      <td class="hist-cell mono ${cls}">${arrow} ${sym}${Math.abs(diff).toLocaleString()}</td>
+      <td class="hist-cell mono" style="color:var(--text2);font-size:12px;">
+        ¥${Number(h.old_cost_jpy).toLocaleString()} → ¥${Number(h.new_cost_jpy).toLocaleString()}
+        <span class="${cls}" style="margin-left:6px;">(${diffJpy>=0?'+':''}¥${Number(diffJpy).toLocaleString()})</span>
+      </td>
+    </tr>`;
+  }).join('');
+}
+function closeHistModal(){ document.getElementById('hist-modal').classList.remove('show'); }
+
 // ── Init ─────────────────────────────────────────────────────────
 async function init(){
   showLoading('データを読み込み中...');
@@ -876,5 +958,33 @@ async function init(){
 }
 init();
 </script>
+
+<!-- History Modal -->
+<div class="overlay" id="hist-modal">
+  <div class="modal imp-modal" style="width:900px;">
+    <h3>📋 仕入れ価格変更履歴：<span id="hist-modal-title" style="color:var(--accent);font-size:14px;"></span></h3>
+    <div class="imp-wrap">
+      <table>
+        <thead>
+          <tr style="background:var(--surface2);position:sticky;top:0;">
+            <th style="width:150px;">変更日時</th>
+            <th>変更前</th>
+            <th style="width:30px;"></th>
+            <th>変更後</th>
+            <th style="width:120px;">差額（外貨）</th>
+            <th>円換算（変更前→後）</th>
+          </tr>
+        </thead>
+        <tbody id="hist-tbody">
+          <tr><td colspan="6" style="text-align:center;color:var(--text3);padding:24px;">履歴がありません</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="mfooter">
+      <button class="btn-c" onclick="closeHistModal()">閉じる</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
