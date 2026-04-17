@@ -133,7 +133,7 @@ tr:hover td{background:rgba(255,255,255,0.012);}
 
 <header>
   <div class="logo">MedBeauty <span>価格管理システム</span></div>
-  <div class="header-right">
+  <div class="header-right"><span id="save-indicator" style="font-size:12px;color:var(--accent);font-family:'DM Mono',monospace;"></span>
     <div class="last-updated" id="last-updated">接続中...</div>
     <button class="btn-refresh" id="btn-refresh" onclick="fetchRates()">為替更新</button>
   </div>
@@ -342,17 +342,18 @@ async function loadProducts(){
 
 async function saveProduct(p){
   const row={
-    name:p.name, currency:p.currency, cost:p.cost||0,
-    margin:p.margin||40, actual_price:p.actualPrice||0,
+    name:p.name||'', currency:p.currency||'KRW', cost:parseFloat(p.cost)||0,
+    margin:parseFloat(p.margin)||40, actual_price:parseFloat(p.actualPrice)||0,
     bcart_id:p.bcartId||null, bcart_code:p.bcartCode||null,
     category:p.category||'', updated_at:new Date().toISOString(),
   };
   if(p.id){
     const {error}=await sb.from('products').update(row).eq('id',p.id);
-    if(error) console.error('update error:',error);
+    if(error){ console.error('update error:',error); return false; }
+    return true;
   } else {
     const {data,error}=await sb.from('products').insert(row).select().single();
-    if(error){console.error('insert error:',error);return null;}
+    if(error){ console.error('insert error:',error); return null; }
     return data.id;
   }
 }
@@ -534,14 +535,30 @@ function renderProducts(){
   renderSummary();
 }
 
+// Debounce timers for save
+const saveTimers = {};
+
 async function updP(i,k,v){
   products[i][k]=v;
-  await saveProduct(products[i]);
-  renderProducts();renderCatTabs();
+  // Show pending indicator
+  const indicator = document.getElementById('save-indicator');
+  if(indicator){ indicator.textContent='保存中...'; indicator.style.color='var(--warn)'; }
+  // Debounce: wait 800ms before saving to avoid saving on every keystroke
+  clearTimeout(saveTimers[i]);
+  saveTimers[i] = setTimeout(async()=>{
+    await saveProduct(products[i]);
+    if(indicator){ indicator.textContent='✅ 保存済み'; indicator.style.color='var(--accent)';
+      setTimeout(()=>{ if(indicator) indicator.textContent=''; }, 2000); }
+    renderProducts();renderCatTabs();
+  }, 800);
 }
 async function delP(i){
   if(!confirm('削除しますか？'))return;
-  await deleteProductDB(products[i].id);
+  const p = products[i];
+  if(p.id){
+    const {error} = await sb.from('products').delete().eq('id', p.id);
+    if(error){ console.error('削除エラー:', error); alert('削除に失敗しました'); return; }
+  }
   products.splice(i,1);
   renderProducts();renderCatTabs();
 }
@@ -640,11 +657,13 @@ async function confirmImport(){
   if(impBuf.length===0){alert('CSVを先に読み込んでください');return;}
   const checked=new Set([...document.querySelectorAll('.imp-chk:checked')].map(c=>parseInt(c.dataset.idx)));
   if(checked.size===0){alert('取り込む商品を選択してください');return;}
-  showLoading('Supabaseに保存中...');
+  showLoading('Supabaseに保存中... (0%)');
   let added=0,updated=0;
-  for(let bi=0;bi<impBuf.length;bi++){
-    if(!checked.has(bi))continue;
-    const bp=impBuf[bi];
+  const targets=impBuf.filter((_,bi)=>checked.has(bi));
+  for(let bi=0;bi<targets.length;bi++){
+    const bp=targets[bi];
+    const pct=Math.round((bi+1)/targets.length*100);
+    document.getElementById('loading-msg').textContent=`Supabaseに保存中... (${pct}%)`;
     const xi=products.findIndex(p=>p.bcartId===bp.bcartId);
     if(xi>=0){
       products[xi].name=bp.name;products[xi].bcartCode=bp.code;
